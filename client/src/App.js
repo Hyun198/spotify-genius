@@ -7,6 +7,7 @@ function App() {
   const [searchKey, setSearchKey] = useState("");
   const [topArtist, setTopArtist] = useState(null);
   const [topArtistTracks, setTopArtistTracks] = useState([]);
+  const [searchTracks, setSearchTracks] = useState([]);
   const [selectedTrack, setSelectedTrack] = useState('');
   const [lyrics, setLyrics] = useState(''); //원본 가사
   const [translatedLyrics, setTranslatedLyrics] = useState(''); //번역된 가사
@@ -23,25 +24,15 @@ function App() {
       return;
     }
     try {
-      const response = await fetch("/api/search", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          searchTerm: searchTerm
-        })
-      })
-      if (!response.ok) {
+      const response = await axios.post("/api/search", { searchTerm });
+      if (response.status !== 200) {
         throw new Error("Failed to search artists");
       }
-      const data = await response.json();
+      const data = await response.data;
       console.log(data);
-      console.log(data.artist.images);
       setTopArtist(data.artist)
-      setTopArtistTracks(data.tracks)
-
-
+      setTopArtistTracks(data.artistTracks);
+      setSearchTracks(data.searchTracks);
     } catch (error) {
       console.error(error.message);
     }
@@ -51,19 +42,15 @@ function App() {
     try {
       console.log(track);
       setSelectedTrack(track.name);
-      const response = await fetch('/api/track/select', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(track)
-      });
-      if (!response.ok) {
+      const response = await axios.post('/api/track/select', track);
+
+      if (response.status !== 200) {
         throw new Error("Failed to send track");
       }
 
-      const data = await response.json();
+      const data = response.data;
       const Lyrics = data.lyrics;
+
       setLyrics(Lyrics);
       setTranslatedLyrics('');
       setIsTranslated(isTranslated) //false
@@ -97,8 +84,8 @@ function App() {
       <header className="header_container">
         <form className="search_box" onSubmit={searchArtists} >
           <box-icon name='search-alt'></box-icon>
-          <input className="search-input" type="text" placeholder='아티스트,앨범,노래' onChange={e => setSearchKey(e.target.value)} />
-          <button className="search-btn" type={"submit"}>Search</button>
+          <input className="search-input" type="text" placeholder='아티스트,앨범,노래' value={searchKey} onChange={(e) => setSearchKey(e.target.value)} />
+          <button className="search-btn" type="submit">Search</button>
         </form>
       </header>
       <main className="main_container">
@@ -106,7 +93,7 @@ function App() {
           <div className="top-artist">
             <img className="topArtist_imgs" src={topArtist.images[0].url} alt={topArtist.name} />
             <p className="top-artist-name">{topArtist.name}</p>
-            <p className='followers'>팔로워 수: {topArtist.followers.total}</p>
+
             <div className='top-artist-info'>
               {topArtist.genres.map(genre => (
                 <p key={genre} className='genre'>{genre}</p>
@@ -126,12 +113,16 @@ function App() {
             </React.Fragment>
           ))}
         </div>
-        {/* <div className="related-artists">
-          {relatedArtists.map(artist => (
-            <div className="artist" key={artist.id}>
-              <img className="artist-image" src={artist.images[0].url} alt={artist.name} />
-              <p className="artist-name">{artist.name}</p>
-            </div>
+
+        {/* <div className="search-tracks">
+          {searchTracks.map((track, index) => (
+            <React.Fragment key={track.id}>
+              <div className="top-artist-track" onClick={() => handleTrackSelect({ name: track.name, artist: track.artists[0].name })}>
+                <img className="track-image" src={track.album.images[0].url} alt={track.album.name} />
+                <p className="track-name">{track.name}</p>
+              </div>
+              {((index + 1) % 5 === 0 && index !== searchTracks.length - 1) && <div className="row-divider" />}
+            </React.Fragment>
           ))}
         </div> */}
       </main>

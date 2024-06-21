@@ -4,6 +4,7 @@ const bodyParser = require('body-parser');
 const axios = require('axios');
 const qs = require('qs');
 const app = express();
+const cors = require('cors');
 
 const getLyrics = require('./lib/getLyrics');
 const getSong = require('./lib/getSong');
@@ -14,6 +15,7 @@ const PORT = process.env.PORT || 5000;
 
 app.use(express.json())
 app.use(bodyParser.json())
+app.use(cors());
 
 //Spotify api 설정
 const CLIENT_ID = process.env.CLIENT_ID
@@ -21,6 +23,7 @@ const CLIENT_SECRET = process.env.CLIENT_SECRET
 const REDIRECT_URI = "http://localhost:3000"
 const AUTH_ENDPOINT = "https://accounts.spotify.com/api/token"
 const RESPONSE_TYPE = "token"
+
 
 const getAccessToken = async () => {
     try {
@@ -40,44 +43,78 @@ const getAccessToken = async () => {
         throw new Error("Failed to get access token");
     }
 }
-
-
-
-app.post('/api/search', async (req, res) => {
+const fetchArtist = async (token, searchTerm) => {
     try {
-        const { searchTerm } = req.body;
-        const token = await getAccessToken();
-
         const response = await axios.get("https://api.spotify.com/v1/search", {
             headers: {
                 Authorization: `Bearer ${token}`
             },
             params: {
                 q: searchTerm,
-                type: "artist,album,track",
+                type: "artist",
                 market: "KR",
-                limit: 10
+                limit: 1
             }
         });
-        const searchResults = {
-            artists: response.data.artists.items,
-            /* albums: response.data.albums.items,
-            tracks: response.data.tracks.items, */
+        return response.data.artists.items[0]; // 첫 번째 가수 정보 반환
+    } catch (error) {
+        console.error('Error fetching artist:', error);
+        return null;
+    }
+};
 
-        }
-        console.log(searchResults);
-
-        const TopArtistId = response.data.artists.items[0].id;
-        const TopArtistsTracks = await axios.get(`https://api.spotify.com/v1/artists/${TopArtistId}/top-tracks`, {
+const fetchTrack = async (token, searchTerm) => {
+    try {
+        const response = await axios.get("https://api.spotify.com/v1/search", {
             headers: {
                 Authorization: `Bearer ${token}`
             },
+            params: {
+                q: searchTerm,
+                type: "track",
+                market: "KR",
+                limit: 1
+            }
         });
-        const TopArtistData = {
-            artist: response.data.artists.items[0], // 최상위 아티스트 정보
-            tracks: TopArtistsTracks.data.tracks // 해당 아티스트의 트랙 데이터
-        };
-        res.json(TopArtistData);
+        return response.data.tracks.items; // 노래 목록 반환
+    } catch (error) {
+        console.error('Error fetching track:', error);
+        return [];
+    }
+};
+
+
+app.post('/api/search', async (req, res) => {
+    const { searchTerm } = req.body;
+    try {
+        const token = await getAccessToken();
+        const [artist, tracks] = await Promise.all([
+            fetchArtist(token, searchTerm),
+            fetchTrack(token, searchTerm)
+        ]);
+
+        let topArtistData = null;
+        if (artist) {
+            const topArtistTracks = await axios.get(`https://api.spotify.com/v1/artists/${artist.id}/top-tracks`, {
+                headers: {
+                    Authorization: `Bearer ${token}`
+                },
+                params: {
+                    market: "KR"
+                }
+            });
+
+            topArtistData = {
+                artist,
+                tracks: topArtistTracks.data.tracks
+            };
+        }
+
+        res.json({
+            artist: topArtistData ? topArtistData.artist : null,
+            artistTracks: topArtistData ? topArtistData.tracks : [],
+            searchTracks: tracks
+        });
 
     } catch (error) {
         console.error("Error searching artists:", error.message);
@@ -85,7 +122,6 @@ app.post('/api/search', async (req, res) => {
     }
 });
 
-let translatedLyrics = '';
 //track정보 받아오기
 app.post('/api/track/select', async (req, res) => {
     try {
@@ -99,7 +135,7 @@ app.post('/api/track/select', async (req, res) => {
             optimizeQuery: true,
         };
         const lyrics = await getLyrics(options)
-        console.log("가사 불러오기 성공")
+        console.log("가사 불러오기 성공");
         res.json({ lyrics: lyrics });
 
     } catch (error) {
